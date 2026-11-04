@@ -1,0 +1,105 @@
+---
+- name: Get bucket info (REST API)
+  ansible.builtin.uri:
+    url: "{{ couchbase_protocol }}://{{ couchbase_host }}:{{ couchbase_port }}/pools/default/buckets/{{ bucket_name }}"
+    method: GET
+    user: "{{ couchbase_admin_user }}"
+    password: "{{ couchbase_admin_password }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: "{{ couchbase_api_timeout }}"
+    validate_certs: "{{ tls_verify_certs }}"
+    ca_path: "{{ tls_ca_cert_path | default(omit, true) }}"
+    client_cert: "{{ tls_client_cert_path | default(omit, true) }}"
+    client_key: "{{ tls_client_key_path | default(omit, true) }}"
+  register: bucket_info_api
+  when: use_rest_api | bool
+  no_log: true
+  tags:
+    - info
+
+- name: Get bucket info (CLI)
+  ansible.builtin.command:
+    cmd: >-
+      {{ couchbase_cli_path }}/couchbase-cli bucket-list
+      -c {{ couchbase_cli_scheme }}://{{ couchbase_host }}
+      -u {{ couchbase_admin_user }}
+      {{ '--no-ssl-verify' if use_tls | bool and not tls_verify_certs else '' }}
+      {{ '--cacert ' + tls_ca_cert_path if use_tls | bool and tls_ca_cert_path else '' }}
+      {{ '--client-cert ' + tls_client_cert_path if use_tls | bool and tls_client_cert_path else '' }}
+      {{ '--client-key ' + tls_client_key_path if use_tls | bool and tls_client_key_path else '' }}
+      {{ '--client-key-password ' + tls_client_key_password if use_tls | bool and tls_client_key_password else '' }}
+  environment:
+    CB_REST_PASSWORD: "{{ couchbase_admin_password }}"
+  register: bucket_info_cli
+  changed_when: false
+  when: not (use_rest_api | bool)
+  no_log: true
+  tags:
+    - info
+
+- name: Parse bucket info from CLI output
+  ansible.builtin.set_fact:
+    bucket_info_cli_lines: "{{ bucket_info_cli.stdout_lines }}"
+  when: not (use_rest_api | bool)
+  tags:
+    - info
+
+- name: Filter bucket info for target bucket
+  ansible.builtin.set_fact:
+    bucket_info_cli_parsed: |-
+      {%- set ns = namespace(found=false, result=[]) -%}
+      {%- for line in bucket_info_cli_lines -%}
+        {%- if line == bucket_name -%}
+          {%- set ns.found = true -%}
+          {%- set ns.result = ns.result + [line] -%}
+        {%- elif ns.found and line.startswith(' ') -%}
+          {%- set ns.result = ns.result + [line | trim] -%}
+        {%- elif ns.found and not line.startswith(' ') and line != '' -%}
+          {%- set ns.found = false -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ ns.result }}
+  when: not (use_rest_api | bool)
+  tags:
+    - info
+
+- name: Display bucket info (REST API)
+  ansible.builtin.debug:
+    msg:
+      - "BUCKET INFO"
+      - "Name: {{ bucket_info_api.json.name }}"
+      - "Type: {{ bucket_info_api.json.bucketType }}"
+      - "RAM Quota: {{ (bucket_info_api.json.quota.ram / 1024 / 1024) | int }} MB"
+      - "Replicas: {{ bucket_info_api.json.replicaNumber }}"
+      - "Eviction Policy: {{ bucket_info_api.json.evictionPolicy }}"
+      - "Storage Backend: {{ bucket_info_api.json.storageBackend }}"
+      - "Conflict Resolution: {{ bucket_info_api.json.conflictResolutionType }}"
+      - "Durability Min Level: {{ bucket_info_api.json.durabilityMinLevel }}"
+      - "Compression Mode: {{ bucket_info_api.json.compressionMode }}"
+      - "Max TTL: {{ bucket_info_api.json.maxTTL }} seconds"
+      - "Flush Enabled: {{ bucket_info_api.json.controllers.flush is defined }}"
+      - "Nodes: {{ bucket_info_api.json.nodes | length }}"
+      - "Healthy Nodes: {{ bucket_info_api.json.nodes | selectattr('status', 'equalto', 'healthy') | list | length }}"
+      - "Items: {{ bucket_info_api.json.basicStats.itemCount }}"
+      - "Disk Used: {{ (bucket_info_api.json.basicStats.diskUsed / 1024 / 1024) | round(2) }} MB"
+      - "Memory Used: {{ (bucket_info_api.json.basicStats.memUsed / 1024 / 1024) | round(2) }} MB"
+  when: use_rest_api | bool
+  tags:
+    - info
+
+- name: Display bucket info (CLI)
+  ansible.builtin.debug:
+    msg: "{{ ['BUCKET INFO'] + bucket_info_cli_parsed}}"
+  when: not (use_rest_api | bool)
+  tags:
+    - info
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg:
+      - "  COUCHBASE BUCKET CREATION"
+      - "Status: {{ 'ALREADY EXISTS' if bucket_exists else 'CREATED' }}"
+      - "Bucket: {{ bucket_name }}"
+  tags:
+    - info

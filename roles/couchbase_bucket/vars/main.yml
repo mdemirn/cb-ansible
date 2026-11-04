@@ -1,0 +1,6 @@
+---
+_cli_conflict_resolution_map:
+  seqno: "sequence"
+  lww: "timestamp"
+
+_cli_conflict_resolution: "{{ _cli_conflict_resolution_map[bucket_conflict_resolution] | default('sequence') }}"

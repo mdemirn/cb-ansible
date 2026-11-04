@@ -1,0 +1,18 @@
+---
+profile: production
+
+exclude_paths:
+  - .git/
+  - .github/
+
+skip_list:
+  - yaml[line-length]
+  - name[template]
+
+warn_list:
+  - experimental
+
+enable_list:
+  - fqcn-builtins
+  - no-changed-when
+  - no-handler

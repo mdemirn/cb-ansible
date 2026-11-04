@@ -1,0 +1,51 @@
+---
+- name: Health check - Find available Couchbase node
+  block:
+    - name: Check cluster nodes availability
+      ansible.builtin.uri:
+        url: "{{ couchbase_protocol }}://{{ item }}:{{ couchbase_port }}/pools"
+        method: GET
+        user: "{{ couchbase_admin_user }}"
+        password: "{{ couchbase_admin_password }}"
+        force_basic_auth: true
+        status_code: [200]
+        timeout: "{{ couchbase_health_check_timeout }}"
+        validate_certs: "{{ tls_verify_certs }}"
+        ca_path: "{{ tls_ca_cert_path | default(omit, true) }}"
+        client_cert: "{{ tls_client_cert_path | default(omit, true) }}"
+        client_key: "{{ tls_client_key_path | default(omit, true) }}"
+      register: health_check_results
+      loop: "{{ couchbase_cluster_nodes }}"
+      ignore_errors: true
+      no_log: true
+
+    - name: Set available nodes list
+      ansible.builtin.set_fact:
+        available_nodes: "{{ health_check_results.results | selectattr('status', 'defined') | selectattr('status', 'equalto', 200) | map(attribute='item') | list }}"
+
+    - name: Fail if no nodes available
+      ansible.builtin.fail:
+        msg: "No Couchbase nodes available. Tried: {{ couchbase_cluster_nodes | join(', ') }}"
+      when: available_nodes | length == 0
+
+    - name: Set active Couchbase host
+      ansible.builtin.set_fact:
+        couchbase_host: "{{ available_nodes[0] }}"
+
+    - name: Display health check result
+      ansible.builtin.debug:
+        msg:
+          - "HEALTH CHECK PASSED"
+          - "Available nodes: {{ available_nodes | join(', ') }}"
+          - "Selected node: {{ couchbase_host }}"
+          - "TLS Enabled: {{ use_tls | bool }}"
+  when: use_rest_api | bool
+  tags:
+    - health_check
+
+- name: Set default host for CLI mode
+  ansible.builtin.set_fact:
+    couchbase_host: "{{ couchbase_cluster_nodes[0] }}"
+  when: not (use_rest_api | bool)
+  tags:
+    - health_check

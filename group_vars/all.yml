@@ -1,0 +1,4 @@
+---
+couchbase_cluster_nodes: "{{ groups['couchbase_cluster'] | map('extract', hostvars, 'ansible_host') | select('defined') | list | default(groups['couchbase_cluster']) }}"
+couchbase_admin_password: "{{ vault_couchbase_admin_password }}"
+tls_client_key_password: "{{ vault_tls_client_key_password }}"

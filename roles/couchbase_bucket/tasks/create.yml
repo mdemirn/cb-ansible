@@ -1,0 +1,96 @@
+---
+- name: Display bucket already exists message
+  ansible.builtin.debug:
+    msg: "Bucket '{{ bucket_name }}' already exists. Skipping creation."
+  when: bucket_exists
+  tags:
+    - create
+
+- name: Create bucket block
+  block:
+    - name: Create bucket (REST API)
+      ansible.builtin.uri:
+        url: "{{ couchbase_protocol }}://{{ couchbase_host }}:{{ couchbase_port }}/pools/default/buckets"
+        method: POST
+        user: "{{ couchbase_admin_user }}"
+        password: "{{ couchbase_admin_password }}"
+        force_basic_auth: true
+        body_format: form-urlencoded
+        body:
+          name: "{{ bucket_name }}"
+          ramQuota: "{{ bucket_ram_quota }}"
+          bucketType: "{{ bucket_type }}"
+          replicaNumber: "{{ bucket_replica_count }}"
+          flushEnabled: "{{ bucket_flush_enabled }}"
+          evictionPolicy: "{{ bucket_eviction_policy }}"
+          storageBackend: "{{ bucket_storage_backend }}"
+          conflictResolutionType: "{{ bucket_conflict_resolution }}"
+          durabilityMinLevel: "{{ bucket_durability_min_level }}"
+          compressionMode: "{{ bucket_compression_mode }}"
+          maxTTL: "{{ bucket_max_ttl }}"
+          replicaIndex: "{{ bucket_enable_index_replica }}"
+        status_code: [200, 202]
+        timeout: "{{ couchbase_api_timeout }}"
+        validate_certs: "{{ tls_verify_certs }}"
+        ca_path: "{{ tls_ca_cert_path | default(omit, true) }}"
+        client_cert: "{{ tls_client_cert_path | default(omit, true) }}"
+        client_key: "{{ tls_client_key_path | default(omit, true) }}"
+      register: bucket_create_api
+      retries: "{{ couchbase_api_retries }}"
+      delay: "{{ couchbase_api_retry_delay }}"
+      until: bucket_create_api is not failed
+      when: use_rest_api | bool
+      no_log: true
+      notify: bucket_created
+      tags:
+        - create
+
+    - name: Create bucket (CLI)
+      ansible.builtin.command:
+        cmd: >-
+          {{ couchbase_cli_path }}/couchbase-cli bucket-create
+          -c {{ couchbase_cli_scheme }}://{{ couchbase_host }}
+          -u {{ couchbase_admin_user }}
+          --bucket {{ bucket_name }}
+          --bucket-type {{ bucket_type }}
+          --bucket-ramsize {{ bucket_ram_quota }}
+          --bucket-replica {{ bucket_replica_count }}
+          --bucket-eviction-policy {{ bucket_eviction_policy }}
+          --storage-backend {{ bucket_storage_backend }}
+          --bucket-priority {{ bucket_priority }}
+          --conflict-resolution {{ _cli_conflict_resolution }}
+          --durability-min-level {{ bucket_durability_min_level }}
+          --compression-mode {{ bucket_compression_mode }}
+          --max-ttl {{ bucket_max_ttl }}
+          --enable-flush {{ bucket_flush_enabled }}
+          --enable-index-replica {{ bucket_enable_index_replica }}
+          {{ '--no-ssl-verify' if use_tls | bool and not tls_verify_certs else '' }}
+          {{ '--cacert ' + tls_ca_cert_path if use_tls | bool and tls_ca_cert_path else '' }}
+          {{ '--client-cert ' + tls_client_cert_path if use_tls | bool and tls_client_cert_path else '' }}
+          {{ '--client-key ' + tls_client_key_path if use_tls | bool and tls_client_key_path else '' }}
+          {{ '--client-key-password ' + tls_client_key_password if use_tls | bool and tls_client_key_password else '' }}
+          --wait
+      environment:
+        CB_REST_PASSWORD: "{{ couchbase_admin_password }}"
+      register: bucket_create_cli
+      when: not (use_rest_api | bool)
+      no_log: true
+      tags:
+        - create
+
+    - name: Display bucket creation success message
+      ansible.builtin.debug:
+        msg: "Bucket '{{ bucket_name }}' created successfully."
+      tags:
+        - create
+
+  rescue:
+    - name: Display bucket creation failure
+      ansible.builtin.fail:
+        msg: "Failed to create bucket '{{ bucket_name }}'. Check Couchbase logs for details."
+      tags:
+        - create
+
+  when: not bucket_exists
+  tags:
+    - create

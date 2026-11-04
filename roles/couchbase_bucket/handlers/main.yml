@@ -1,0 +1,21 @@
+---
+- name: Wait for bucket to be ready (REST API)
+  ansible.builtin.uri:
+    url: "{{ couchbase_protocol }}://{{ couchbase_host }}:{{ couchbase_port }}/pools/default/buckets/{{ bucket_name }}"
+    method: GET
+    user: "{{ couchbase_admin_user }}"
+    password: "{{ couchbase_admin_password }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: "{{ couchbase_api_timeout }}"
+    validate_certs: "{{ tls_verify_certs }}"
+    ca_path: "{{ tls_ca_cert_path | default(omit, true) }}"
+    client_cert: "{{ tls_client_cert_path | default(omit, true) }}"
+    client_key: "{{ tls_client_key_path | default(omit, true) }}"
+  register: bucket_status
+  until: bucket_status.json.nodes | selectattr('status', 'equalto', 'healthy') | list | length == bucket_status.json.nodes | length
+  retries: "{{ couchbase_bucket_ready_retries }}"
+  delay: "{{ couchbase_bucket_ready_delay }}"
+  when: use_rest_api | bool
+  no_log: true
+  listen: bucket_created

@@ -1,0 +1,10 @@
+---
+- name: Create Couchbase Bucket
+  hosts: "{{ target_host | default(lookup('pipe', 'hostname -s')) }}"
+  gather_facts: true
+  connection: "{{ 'local' if inventory_hostname == lookup('pipe', 'hostname -s') else 'ssh' }}"
+  vars_files:
+    - ../group_vars/all.yml
+    - ../group_vars/vault.yml
+  roles:
+    - couchbase_bucket

@@ -1,0 +1,61 @@
+---
+- name: Validate bucket name
+  ansible.builtin.assert:
+    that:
+      - bucket_name is defined
+      - bucket_name | length > 0
+      - bucket_name | length <= 100
+      - bucket_name is regex('^[a-zA-Z0-9._%-]+$')
+    fail_msg: "Invalid bucket name '{{ bucket_name }}'. Must be 1-100 characters: letters, numbers, dots, underscores, hyphens, percent."
+    success_msg: "Bucket name '{{ bucket_name }}' is valid."
+  tags:
+    - validate
+
+- name: Check if bucket exists (REST API)
+  ansible.builtin.uri:
+    url: "{{ couchbase_protocol }}://{{ couchbase_host }}:{{ couchbase_port }}/pools/default/buckets/{{ bucket_name }}"
+    method: GET
+    user: "{{ couchbase_admin_user }}"
+    password: "{{ couchbase_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+    timeout: "{{ couchbase_api_timeout }}"
+    validate_certs: "{{ tls_verify_certs }}"
+    ca_path: "{{ tls_ca_cert_path | default(omit, true) }}"
+    client_cert: "{{ tls_client_cert_path | default(omit, true) }}"
+    client_key: "{{ tls_client_key_path | default(omit, true) }}"
+  register: bucket_check_api
+  retries: "{{ couchbase_api_retries }}"
+  delay: "{{ couchbase_api_retry_delay }}"
+  until: bucket_check_api is not failed
+  when: use_rest_api | bool
+  no_log: true
+  tags:
+    - validate
+
+- name: Check if bucket exists (CLI)
+  ansible.builtin.command:
+    cmd: >-
+      {{ couchbase_cli_path }}/couchbase-cli bucket-list
+      -c {{ couchbase_cli_scheme }}://{{ couchbase_host }}
+      -u {{ couchbase_admin_user }}
+      {{ '--no-ssl-verify' if use_tls | bool and not tls_verify_certs else '' }}
+      {{ '--cacert ' + tls_ca_cert_path if use_tls | bool and tls_ca_cert_path else '' }}
+      {{ '--client-cert ' + tls_client_cert_path if use_tls | bool and tls_client_cert_path else '' }}
+      {{ '--client-key ' + tls_client_key_path if use_tls | bool and tls_client_key_path else '' }}
+      {{ '--client-key-password ' + tls_client_key_password if use_tls | bool and tls_client_key_password else '' }}
+  environment:
+    CB_REST_PASSWORD: "{{ couchbase_admin_password }}"
+  register: bucket_list_cli
+  changed_when: false
+  failed_when: false
+  when: not (use_rest_api | bool)
+  no_log: true
+  tags:
+    - validate
+
+- name: Set bucket exists fact
+  ansible.builtin.set_fact:
+    bucket_exists: "{{ (use_rest_api | bool and bucket_check_api.status == 200) or (not (use_rest_api | bool) and bucket_name in bucket_list_cli.stdout) }}"
+  tags:
+    - validate

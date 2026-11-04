@@ -1,0 +1,36 @@
+---
+couchbase_admin_user: "Administrator"
+couchbase_cli_path: "/opt/couchbase/bin"
+
+use_rest_api: true
+use_tls: false
+
+couchbase_port: "{{ 18091 if use_tls | bool else 8091 }}"
+couchbase_protocol: "{{ 'https' if use_tls | bool else 'http' }}"
+couchbase_cli_scheme: "{{ 'couchbases' if use_tls | bool else 'couchbase' }}"
+
+tls_verify_certs: true
+tls_ca_cert_path: ""
+tls_client_cert_path: ""
+tls_client_key_path: ""
+
+bucket_name: "{{ ansible_hostname }}"
+bucket_ram_quota: 256
+bucket_type: "couchbase"
+bucket_replica_count: 1
+bucket_flush_enabled: 0
+bucket_eviction_policy: "valueOnly"
+bucket_storage_backend: "couchstore"
+bucket_priority: "low"
+bucket_conflict_resolution: "seqno"
+bucket_durability_min_level: "none"
+bucket_compression_mode: "passive"
+bucket_max_ttl: 0
+bucket_enable_index_replica: 0
+
+couchbase_api_timeout: 10
+couchbase_api_retries: 3
+couchbase_api_retry_delay: 5
+couchbase_bucket_ready_retries: 30
+couchbase_bucket_ready_delay: 10
+couchbase_health_check_timeout: 5

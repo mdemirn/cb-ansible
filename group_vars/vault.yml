@@ -1,0 +1,5 @@
+---
+# Put your own values here, then encrypt the file:
+#   ansible-vault encrypt group_vars/vault.yml
+vault_couchbase_admin_password: "CHANGE_ME"
+vault_tls_client_key_password: ""
